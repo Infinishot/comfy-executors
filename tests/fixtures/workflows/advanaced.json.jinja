@@ -1,0 +1,336 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "realvisxlV40_v40LightningBakedvae.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "87",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "13": {
+    "inputs": {
+      "preset": "FACEID",
+      "lora_strength": 1,
+      "provider": "CUDA",
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "IPAdapterUnifiedLoaderFaceID",
+    "_meta": {
+      "title": "IPAdapter Unified Loader FaceID"
+    }
+  },
+  "16": {
+    "inputs": {
+      "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "19": {
+    "inputs": {
+      "directory": "{{ input_images_dir }}",
+      "image_load_cap": 0,
+      "start_index": 0,
+      "load_always": false
+    },
+    "class_type": "LoadImagesFromDir //Inspire",
+    "_meta": {
+      "title": "Load Reference Images"
+    }
+  },
+  "22": {
+    "inputs": {
+      "interpolation": "LANCZOS",
+      "crop_position": "center",
+      "sharpening": 0.5,
+      "image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "PrepImageForClipVision",
+    "_meta": {
+      "title": "Prep Image For ClipVision"
+    }
+  },
+  "24": {
+    "inputs": {
+      "stop_at_clip_layer": -3,
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPSetLastLayer",
+    "_meta": {
+      "title": "CLIP Set Last Layer"
+    }
+  },
+  "62": {
+    "inputs": {
+      "weight": 1,
+      "weight_faceidv2": 0.8,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0,
+      "end_at": 1,
+      "embeds_scaling": "K+V w/ C penalty",
+      "model": [
+        "13",
+        0
+      ],
+      "ipadapter": [
+        "13",
+        1
+      ],
+      "image": [
+        "22",
+        0
+      ],
+      "clip_vision": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "IPAdapterFaceID",
+    "_meta": {
+      "title": "IPAdapter FaceID"
+    }
+  },
+  "86": {
+    "inputs": {
+      "seed": -1
+    },
+    "class_type": "Simple Seed",
+    "_meta": {
+      "title": "Simple Seed"
+    }
+  },
+  "87": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "86",
+        0
+      ],
+      "steps": 8,
+      "cfg": 1.5,
+      "sampler_name": "dpmpp_sde",
+      "scheduler": "karras",
+      "start_at_step": 0,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "179",
+        0
+      ],
+      "positive": [
+        "159",
+        0
+      ],
+      "negative": [
+        "159",
+        1
+      ],
+      "latent_image": [
+        "183",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "159": {
+    "inputs": {
+      "strength": 0.6,
+      "start_percent": 0,
+      "end_percent": 1,
+      "positive": [
+        "205",
+        0
+      ],
+      "negative": [
+        "206",
+        0
+      ],
+      "control_net": [
+        "160",
+        0
+      ],
+      "image": [
+        "163",
+        0
+      ]
+    },
+    "class_type": "ControlNetApplyAdvanced",
+    "_meta": {
+      "title": "Apply ControlNet (Advanced)"
+    }
+  },
+  "160": {
+    "inputs": {
+      "control_net_name": "control-lora-openposeXL2-rank256.safetensors"
+    },
+    "class_type": "ControlNetLoader",
+    "_meta": {
+      "title": "Load ControlNet Model"
+    }
+  },
+  "161": {
+    "inputs": {
+      "image": "{{ controlnet_template_image_path|string }}",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "163": {
+    "inputs": {
+      "detect_hand": "enable",
+      "detect_body": "enable",
+      "detect_face": "enable",
+      "resolution": 512,
+      "image": [
+        "161",
+        0
+      ]
+    },
+    "class_type": "OpenposePreprocessor",
+    "_meta": {
+      "title": "OpenPose Pose"
+    }
+  },
+  "179": {
+    "inputs": {
+      "multiplier": 0.7,
+      "model": [
+        "62",
+        0
+      ]
+    },
+    "class_type": "RescaleCFG",
+    "_meta": {
+      "title": "RescaleCFG"
+    }
+  },
+  "183": {
+    "inputs": {
+      "width": 896,
+      "height": 1152,
+      "batch_size": {{ batch_size|int }}
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "205": {
+    "inputs": {
+      "width": 896,
+      "height": 1152,
+      "size_cond_factor": 4,
+      "text": "professional business portrait, professional attire, gradient background, sympathetic look, friendly expression, natural skin, linkedin profile",
+      "clip": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncodeSDXL+",
+    "_meta": {
+      "title": "🔧 SDXLCLIPTextEncode"
+    }
+  },
+  "206": {
+    "inputs": {
+      "width": 896,
+      "height": 1152,
+      "size_cond_factor": 4,
+      "text": "(hands, arms:1.25), pale, unhealthy, homeless, watch, jewelry",
+      "clip": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncodeSDXL+",
+    "_meta": {
+      "title": "🔧 SDXLCLIPTextEncode"
+    }
+  },
+  "253": {
+    "inputs": {
+      "model": "buffalo_l",
+      "provider": "CUDA"
+    },
+    "class_type": "Load Insightface Face Analysis Model",
+    "_meta": {
+      "title": "Load Insightface Face Analysis Model"
+    }
+  },
+  "272": {
+    "inputs": {
+      "ignore_missing_faces": false,
+      "filter_thresh_eucl": 1,
+      "filter_thresh_cos": 1,
+      "filter_best": {{ num_filter_best|default(0, true)|int }},
+      "filter_by_euclidean_dist": true,
+      "filter_by_cosine_dist": true,
+      "generate_image_overlay": false,
+      "overlay_font_size": 32,
+      "analysis_model": [
+        "253",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ],
+      "reference": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "Face Embedding Distance Analysis",
+    "_meta": {
+      "title": "Face Embedding Distance Analysis"
+    }
+  },
+  "273": {
+    "inputs": {
+      "filename_prefix": "results",
+      "images": [
+        "272",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}
