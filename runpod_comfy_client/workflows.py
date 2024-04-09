@@ -8,12 +8,9 @@ class WorkflowTemplate:
     REQUIRED_VARIABLES = ["input_images_dir", "batch_size"]
 
     def __init__(self, template_string: str):
-        self.workflow_template_string = template_string
-        self.workflow_template = Template(
-            self.workflow_template_raw, undefined=StrictUndefined
-        )
+        self.workflow_template = Template(template_string, undefined=StrictUndefined)
 
-        ast = self.workflow_template.environment.parse(self.workflow_template_raw)
+        ast = self.workflow_template.environment.parse(template_string)
 
         undeclared_variables = meta.find_undeclared_variables(ast)
         if undeclared_variables < set(self.REQUIRED_VARIABLES):
