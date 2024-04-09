@@ -6,7 +6,6 @@ import uuid
 import abc
 import time
 import json
-import logging
 
 from dataclasses import dataclass
 from PIL.Image import Image
@@ -47,8 +46,7 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(
         self,
         endpoint: Endpoint | str,
-        batch_size: int = 8,
-        timeout: int = 60,
+        batch_size: int = 1,
         comfyui_base_dir: str = "/comfyui",
     ):
         if isinstance(endpoint, str):
@@ -58,13 +56,11 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         self.batch_size = batch_size
         self.comfyui_base_dir = Path(comfyui_base_dir)
 
-        self.logger.setLevel(logging.DEBUG)
-
-    def prepare_workflow_payload(
+    def _prepare_workflow_payload(
         self,
         workflow_template: WorkflowTemplate,
         input_images: list[Image],
-        num_samples: int = 1,
+        num_samples: int | None = None,
         randomize_seed: bool = True,
         **kwargs,
     ):
@@ -74,15 +70,18 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         input_images_dir = self.comfyui_base_dir / "input" / job_id
 
-        template_kwargs = dict(
-            input_images_dir=input_images_dir, batch_size=self.batch_size
-        )
+        batch_size = kwargs.get("batch_size", self.batch_size)
+
+        template_kwargs = dict(input_images_dir=input_images_dir, batch_size=batch_size)
 
         template_kwargs.update(kwargs)
 
         workflow = workflow_template.render(**template_kwargs)
 
-        batch_count = math.ceil(num_samples / self.batch_size)
+        if num_samples is None:
+            batch_count = math.ceil(num_samples / batch_size)
+        else:
+            batch_count = kwargs.get("batch_count", 1)
 
         payload = {
             "input": {
@@ -127,7 +126,7 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         **kwargs,
     ) -> Generator[WorkflowOutputImage, None, None]:
         job = self.endpoint.run(
-            self.prepare_workflow_payload(
+            self._prepare_workflow_payload(
                 workflow_template=workflow_template,
                 input_images=input_images,
                 num_samples=num_samples,
