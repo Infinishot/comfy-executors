@@ -654,7 +654,7 @@ websockets = "^12.0"
 type = "git"
 url = "https://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@github.com/Infinishot/comfy-api-client.git"
 reference = "HEAD"
-resolved_reference = "9f132660f5c97eb8968807be151a2a8bf039465e"
+resolved_reference = "9159ddb1bae12f28f8fbe406b12c607386f50ae8"
 
 [[package]]
 name = "cryptography"

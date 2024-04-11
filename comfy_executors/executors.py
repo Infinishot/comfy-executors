@@ -14,8 +14,8 @@ from pathlib import Path
 
 from threading import Thread
 from comfy_api_client import ComfyUIAPIClient
+from comfy_api_client import create_client as create_comfy_client
 from comfy_api_client.utils import randomize_noise_seeds
-import httpx
 from runpod import Endpoint
 from comfy_executors import utils
 from comfy_executors.mixins import LoggingMixin
@@ -53,7 +53,6 @@ class BaseWorkflowExecutor(abc.ABC):
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
-        loop: asyncio.AbstractEventLoop | None = None,
         **kwargs,
     ) -> Awaitable[list[WorkflowOutputImage]]:
         pass
@@ -192,11 +191,9 @@ class RunpodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
-        loop: asyncio.AbstractEventLoop | None = None,
         **kwargs,
     ) -> Awaitable[list[WorkflowOutputImage]]:
-        if loop is None:
-            loop = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
 
         input_images = deepcopy(input_images)
 
@@ -229,16 +226,15 @@ class RunpodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
 
 class RemoteWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
-    def __init__(self, comfy_host: str, client: httpx.AsyncClient, batch_size: int = 1):
-        self.comfy_host = comfy_host
+    def __init__(self, comfy_client: ComfyUIAPIClient, batch_size: int = 1):
+        self.comfy_client = comfy_client
         self.batch_size = batch_size
-        self.client = ComfyUIAPIClient(comfy_host, client)
 
     @classmethod
     @asynccontextmanager
     async def create(cls, comfy_host: str, **kwargs):
-        async with httpx.AsyncClient() as client:
-            yield cls(comfy_host=comfy_host, client=client, **kwargs)
+        async with create_comfy_client(comfy_host) as comfy_client:
+            yield cls(comfy_client=comfy_client, **kwargs)
 
     def submit_workflow(
         self,
@@ -267,14 +263,15 @@ class RemoteWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
-        loop: asyncio.AbstractEventLoop | None = None,
         **kwargs,
     ) -> list[WorkflowOutputImage]:
         job_id = uuid.uuid4().hex
 
+        asyncio.run
+
         uploads = [
             asyncio.create_task(
-                self.client.upload_image(f"{i:04d}.jpg", image, subfolder=job_id)
+                self.comfy_client.upload_image(f"{i:04d}.jpg", image, subfolder=job_id)
             )
             for i, image in enumerate(input_images)
         ]
@@ -307,7 +304,7 @@ class RemoteWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
                 submit_workflow = randomize_noise_seeds(submit_workflow)
 
             prompts.append(
-                asyncio.create_task(self.client.enqueue_workflow(submit_workflow))
+                asyncio.create_task(self.comfy_client.enqueue_workflow(submit_workflow))
             )
 
         self.logger.info(f"Workflow submitted for job {job_id}. Waiting for results...")
@@ -316,11 +313,20 @@ class RemoteWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         outputs = []
 
-        for i, future in enumerate(asyncio.as_completed(futures)):
-            result = await future
+        for i, future in enumerate(futures):
+            try:
+                result = await future
+            except Exception as e:
+                if ignore_errors:
+                    self.logger.error(
+                        f"Got error for batch {i + 1}/{batch_count} of job {job_id}: {e}"
+                    )
+                    continue
+                else:
+                    raise
 
             self.logger.info(
-                f"Got result for batch {i + 1}/{batch_count} for job {job_id}"
+                f"Got results for batch {i + 1}/{batch_count} of job {job_id}"
             )
 
             for image_item in result.output_images:
