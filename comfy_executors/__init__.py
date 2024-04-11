@@ -1,8 +1,8 @@
 from comfy_executors.workflows import WorkflowTemplate
 from comfy_executors.executors import (
     RunPodWorkflowExecutor,
-    ComfyServerWorfklowExecutor,
+    ComfyServerWorkflowExecutor,
 )
 
 
-__all__ = [WorkflowTemplate, RunPodWorkflowExecutor, ComfyServerWorfklowExecutor]
+__all__ = [WorkflowTemplate, RunPodWorkflowExecutor, ComfyServerWorkflowExecutor]

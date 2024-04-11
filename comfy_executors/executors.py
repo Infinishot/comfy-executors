@@ -225,7 +225,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         return future
 
 
-class ComfyServerWorfklowExecutor(BaseWorkflowExecutor, LoggingMixin):
+class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(self, comfy_client: ComfyUIAPIClient, batch_size: int = 1):
         self.comfy_client = comfy_client
         self.batch_size = batch_size
