@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from copy import deepcopy
 import math
 import asyncio
@@ -12,10 +13,13 @@ from PIL.Image import Image
 from pathlib import Path
 
 from threading import Thread
+from comfy_api_client import ComfyUIAPIClient
+from comfy_api_client.utils import randomize_noise_seeds
+import httpx
 from runpod import Endpoint
-from runpod_comfy_client import utils
-from runpod_comfy_client.mixins import LoggingMixin
-from runpod_comfy_client.workflows import WorkflowTemplate
+from comfy_executors import utils
+from comfy_executors.mixins import LoggingMixin
+from comfy_executors.workflows import WorkflowTemplate
 
 
 @dataclass
@@ -38,11 +42,24 @@ class BaseWorkflowExecutor(abc.ABC):
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
+    ) -> Generator[WorkflowOutputImage, None, None]:
+        pass
+
+    @abc.abstractmethod
+    def submit_workflow_async(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        ignore_errors: bool = False,
+        loop: asyncio.AbstractEventLoop | None = None,
+        **kwargs,
     ) -> Awaitable[list[WorkflowOutputImage]]:
         pass
 
 
-class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
+class RunpodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(
         self,
         endpoint: Endpoint | str,
@@ -78,7 +95,7 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         workflow = workflow_template.render(**template_kwargs)
 
-        if num_samples is None:
+        if num_samples is not None:
             batch_count = math.ceil(num_samples / batch_size)
         else:
             batch_count = kwargs.get("batch_count", 1)
@@ -177,7 +194,7 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         ignore_errors: bool = False,
         loop: asyncio.AbstractEventLoop | None = None,
         **kwargs,
-    ) -> list[WorkflowOutputImage]:
+    ) -> Awaitable[list[WorkflowOutputImage]]:
         if loop is None:
             loop = asyncio.get_running_loop()
 
@@ -209,3 +226,110 @@ class RunpodComfyWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         thread.start()
 
         return future
+
+
+class RemoteWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
+    def __init__(self, comfy_host: str, client: httpx.AsyncClient, batch_size: int = 1):
+        self.comfy_host = comfy_host
+        self.batch_size = batch_size
+        self.client = ComfyUIAPIClient(comfy_host, client)
+
+    @classmethod
+    @asynccontextmanager
+    async def create(cls, comfy_host: str, **kwargs):
+        async with httpx.AsyncClient() as client:
+            yield cls(comfy_host=comfy_host, client=client, **kwargs)
+
+    def submit_workflow(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        **kwargs,
+    ) -> list[WorkflowOutputImage]:
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(
+            self.submit_workflow_async(
+                workflow_template=workflow_template,
+                input_images=input_images,
+                num_samples=num_samples,
+                randomize_seed=randomize_seed,
+                loop=loop,
+                **kwargs,
+            )
+        )
+
+    async def submit_workflow_async(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        ignore_errors: bool = False,
+        loop: asyncio.AbstractEventLoop | None = None,
+        **kwargs,
+    ) -> list[WorkflowOutputImage]:
+        job_id = uuid.uuid4().hex
+
+        uploads = [
+            asyncio.create_task(
+                self.client.upload_image(f"{i:04d}.jpg", image, subfolder=job_id)
+            )
+            for i, image in enumerate(input_images)
+        ]
+
+        self.logger.info(f"Uploading {len(uploads)} images for job {job_id}...")
+
+        await asyncio.gather(*uploads)
+
+        self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
+
+        batch_size = kwargs.get("batch_size", self.batch_size)
+
+        workflow = workflow_template.render(
+            input_images_dir=f"input/{job_id}",
+            batch_size=batch_size,
+            **kwargs,
+        )
+
+        if num_samples is not None:
+            batch_count = math.ceil(num_samples / batch_size)
+        else:
+            batch_count = kwargs.get("batch_count", 1)
+
+        prompts = []
+
+        for _ in range(batch_count):
+            submit_workflow = workflow
+
+            if randomize_seed:
+                submit_workflow = randomize_noise_seeds(submit_workflow)
+
+            prompts.append(
+                asyncio.create_task(self.client.enqueue_workflow(submit_workflow))
+            )
+
+        self.logger.info(f"Workflow submitted for job {job_id}. Waiting for results...")
+
+        futures = [result.future for result in await asyncio.gather(*prompts)]
+
+        outputs = []
+
+        for i, future in enumerate(asyncio.as_completed(futures)):
+            result = await future
+
+            self.logger.info(
+                f"Got result for batch {i + 1}/{batch_count} for job {job_id}"
+            )
+
+            for image_item in result.output_images:
+                outputs.append(
+                    WorkflowOutputImage(
+                        image=image_item,
+                        name=image_item.filename,
+                        subfolder=None,
+                    )
+                )
+
+        return outputs

@@ -1,6 +1,6 @@
 import logging
 from functools import cached_property
-from runpod_comfy_client import utils
+from comfy_executors import utils
 
 
 class LoggingMixin:
