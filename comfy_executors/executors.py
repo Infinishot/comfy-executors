@@ -58,7 +58,7 @@ class BaseWorkflowExecutor(abc.ABC):
         pass
 
 
-class RunpodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
+class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(
         self,
         endpoint: Endpoint | str,
@@ -225,7 +225,7 @@ class RunpodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         return future
 
 
-class RemoteWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
+class ComfyServerWorfklowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(self, comfy_client: ComfyUIAPIClient, batch_size: int = 1):
         self.comfy_client = comfy_client
         self.batch_size = batch_size
