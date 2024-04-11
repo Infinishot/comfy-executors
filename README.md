@@ -1,5 +1,5 @@
-runpod-comfy-client
-===================
+comfy-executors
+===============
 
 A client for our [RunPod Comfy Worker](https://github.com/Infinishot/runpod-comfy-worker) with support for worfklow parameterization and asynchronous workflow execution.
 
