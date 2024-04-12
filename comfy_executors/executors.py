@@ -282,11 +282,10 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
 
-        batch_size = kwargs.get("batch_size", self.batch_size)
+        batch_size = kwargs.setdefault("batch_size", self.batch_size)
 
         workflow = workflow_template.render(
             input_images_dir=f"input/{job_id}",
-            batch_size=batch_size,
             **kwargs,
         )
 
