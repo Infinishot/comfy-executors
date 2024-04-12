@@ -46,7 +46,7 @@ class BaseWorkflowExecutor(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def submit_workflow_async(
+    async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
         input_images: list[Image],
@@ -184,7 +184,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         assert job.status() == "COMPLETED"
 
-    def submit_workflow_async(
+    async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
         input_images: list[Image],
@@ -222,7 +222,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         thread = Thread(target=handler)
         thread.start()
 
-        return future
+        return await future
 
 
 class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
@@ -338,3 +338,39 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
                 )
 
         return outputs
+
+
+class DummyWorkflowExecutor(BaseWorkflowExecutor):
+    def __init__(self, image_size: int = 512, batch_size: int = 1):
+        self.image_size = image_size
+        self.batch_size = batch_size
+
+    def submit_workflow(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        **kwargs,
+    ) -> Generator[WorkflowOutputImage, None, None]:
+        for i in range(num_samples):
+            yield WorkflowOutputImage(
+                image=Image.new("RGB", (self.image_size, self.image_size)),
+                name=f"{i:03d}.jpg",
+                subfolder=None,
+            )
+
+    async def submit_workflow_async(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        ignore_errors: bool = False,
+        **kwargs,
+    ) -> list[WorkflowOutputImage]:
+        return list(
+            self.submit_workflow(
+                workflow_template, input_images, num_samples, randomize_seed, **kwargs
+            )
+        )
