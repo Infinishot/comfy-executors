@@ -3,6 +3,7 @@ from comfy_executors.executors import (
     BaseWorkflowExecutor,
     RunPodWorkflowExecutor,
     ComfyServerWorkflowExecutor,
+    DummyWorkflowExecutor,
 )
 
 
@@ -11,4 +12,5 @@ __all__ = [
     BaseWorkflowExecutor,
     RunPodWorkflowExecutor,
     ComfyServerWorkflowExecutor,
+    DummyWorkflowExecutor,
 ]
