@@ -335,7 +335,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
             for image_item in result.output_images:
                 outputs.append(
                     WorkflowOutputImage(
-                        image=image_item,
+                        image=image_item.image,
                         name=image_item.filename,
                         subfolder=None,
                     )
