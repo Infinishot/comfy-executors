@@ -9,6 +9,7 @@ import time
 import json
 
 from dataclasses import dataclass
+from PIL import Image as ImageFactory
 from PIL.Image import Image
 from pathlib import Path
 
@@ -358,7 +359,7 @@ class DummyWorkflowExecutor(BaseWorkflowExecutor):
     ) -> Generator[WorkflowOutputImage, None, None]:
         for i in range(num_samples):
             yield WorkflowOutputImage(
-                image=Image.new("RGB", (self.image_size, self.image_size)),
+                image=ImageFactory.new("RGB", (self.image_size, self.image_size)),
                 name=f"{i:03d}.jpg",
                 subfolder=None,
             )
