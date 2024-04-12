@@ -16,7 +16,6 @@ from threading import Thread
 from comfy_api_client import ComfyUIAPIClient
 from comfy_api_client import create_client as create_comfy_client
 from comfy_api_client.utils import randomize_noise_seeds
-from runpod import Endpoint
 from comfy_executors import utils
 from comfy_executors.mixins import LoggingMixin
 from comfy_executors.workflows import WorkflowTemplate
@@ -61,14 +60,18 @@ class BaseWorkflowExecutor(abc.ABC):
 class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(
         self,
-        endpoint: Endpoint | str,
+        endpoint_id: str,
         batch_size: int = 1,
         comfyui_base_dir: str = "/comfyui",
     ):
-        if isinstance(endpoint, str):
-            endpoint = Endpoint(endpoint)
+        try:
+            from runpod import Endpoint
+        except ImportError:
+            raise ImportError(
+                "The RunPodWorkflowExecutor requires the 'runpod' package to be installed."
+            )
 
-        self.endpoint = endpoint
+        self.endpoint = Endpoint(endpoint_id)
         self.batch_size = batch_size
         self.comfyui_base_dir = Path(comfyui_base_dir)
 
