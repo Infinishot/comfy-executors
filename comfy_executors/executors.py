@@ -275,7 +275,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         uploads = [
             asyncio.create_task(
-                self.comfy_client.upload_image(f"{i:04d}.png", image, subfolder=job_id)
+                self.comfy_client.upload_image(f"{i:04d}.jpg", image, subfolder=job_id)
             )
             for i, image in enumerate(input_images)
         ]
