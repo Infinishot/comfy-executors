@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from copy import deepcopy
 import math
 import asyncio
-from typing import Awaitable, Generator
+from typing import AsyncIterator, Awaitable, Generator
 import uuid
 import abc
 import time
@@ -268,7 +268,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
-    ) -> list[WorkflowOutputImage]:
+    ) -> AsyncIterator[WorkflowOutputImage]:
         job_id = uuid.uuid4().hex
 
         asyncio.run
@@ -314,8 +314,6 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         futures = [result.future for result in await asyncio.gather(*prompts)]
 
-        outputs = []
-
         for i, future in enumerate(futures):
             try:
                 result = await future
@@ -333,15 +331,11 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
             )
 
             for image_item in result.output_images:
-                outputs.append(
-                    WorkflowOutputImage(
-                        image=image_item.image,
-                        name=image_item.filename,
-                        subfolder=None,
-                    )
+                yield WorkflowOutputImage(
+                    image=image_item.image,
+                    name=image_item.filename,
+                    subfolder=None,
                 )
-
-        return outputs
 
 
 class DummyWorkflowExecutor(BaseWorkflowExecutor):
@@ -372,9 +366,12 @@ class DummyWorkflowExecutor(BaseWorkflowExecutor):
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
-    ) -> list[WorkflowOutputImage]:
-        return list(
+    ) -> AsyncIterator[WorkflowOutputImage]:
+        images = list(
             self.submit_workflow(
                 workflow_template, input_images, num_samples, randomize_seed, **kwargs
             )
         )
+
+        for image in images:
+            yield image
