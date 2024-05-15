@@ -110,8 +110,8 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
                 "randomize_seed": randomize_seed,
                 "images": [
                     {
-                        "name": f"{i:02d}.jpg",
-                        "image": utils.image_to_b64(image, format="jpeg"),
+                        "name": f"{i:02d}.png",
+                        "image": utils.image_to_b64(image, format="png"),
                         "subfolder": job_id,
                     }
                     for i, image in enumerate(input_images)
@@ -275,7 +275,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         uploads = [
             asyncio.create_task(
-                self.comfy_client.upload_image(f"{i:04d}.jpg", image, subfolder=job_id)
+                self.comfy_client.upload_image(f"{i:04d}.png", image, subfolder=job_id)
             )
             for i, image in enumerate(input_images)
         ]
