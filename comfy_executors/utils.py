@@ -1,8 +1,11 @@
 import io
 import base64
 
+from pathlib import Path
 from PIL import Image as ImageFactory
 from PIL.Image import Image
+
+from comfy_executors.constants import IMAGE_EXTENSIONS
 
 
 def image_to_buffer(image: Image, format="jpeg"):
@@ -29,3 +32,13 @@ def fullname(o):
     if module is None or module == str.__class__.__module__:
         return o.__class__.__name__
     return module + "." + o.__class__.__name__
+
+
+def glob_by_extensions(path, extensions):
+    path = Path(path)
+    for ext in extensions:
+        yield from path.glob(f"**/*{ext}")
+
+
+def glob_images(path):
+    return glob_by_extensions(path, IMAGE_EXTENSIONS)

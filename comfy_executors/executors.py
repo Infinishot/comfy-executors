@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from copy import deepcopy
 import math
 import asyncio
+import random
 from typing import AsyncIterator, Awaitable, Generator
 import uuid
 import abc
@@ -339,9 +340,28 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
 
 class DummyWorkflowExecutor(BaseWorkflowExecutor):
-    def __init__(self, image_size: int = 512, batch_size: int = 1):
+    def __init__(
+        self,
+        image_folder: str | None = None,
+        image_size: int = 512,
+        batch_size: int = 1,
+        fallback_fill_color: tuple[int, int, int] = (255, 255, 255),
+    ):
         self.image_size = image_size
         self.batch_size = batch_size
+        self.fallback_fill_color = fallback_fill_color
+
+        if image_folder is not None:
+            self.images = [
+                ImageFactory.open(path) for path in utils.glob_images(image_folder)
+            ]
+        else:
+            self.images = [self.create_dummy_image()]
+
+    def create_dummy_image(self):
+        image = ImageFactory.new("RGB", (self.image_size, self.image_size))
+        image.paste(self.fallback_fill_color, (0, 0, image.width, image.height))
+        return image
 
     def submit_workflow(
         self,
@@ -353,7 +373,7 @@ class DummyWorkflowExecutor(BaseWorkflowExecutor):
     ) -> Generator[WorkflowOutputImage, None, None]:
         for i in range(num_samples):
             yield WorkflowOutputImage(
-                image=ImageFactory.new("RGB", (self.image_size, self.image_size)),
+                image=random.choice(self.images),
                 name=f"{i:03d}.jpg",
                 subfolder=None,
             )
