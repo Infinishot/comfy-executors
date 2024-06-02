@@ -683,7 +683,7 @@ websockets = "^12.0"
 type = "git"
 url = "https://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@github.com/Infinishot/comfy-api-client"
 reference = "HEAD"
-resolved_reference = "70bb1c7f75c2e8f0898201dfdf5b43b5696ef23e"
+resolved_reference = "7706cb540e3bfb2dbd34ad72c323afcc586998bf"
 
 [[package]]
 name = "comm"
