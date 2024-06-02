@@ -229,17 +229,35 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         return await future
 
-     
+
 class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
-    def __init__(self, comfy_client: ComfyUIAPIClient, batch_size: int = 1):
+    def __init__(
+        self,
+        comfy_client: ComfyUIAPIClient,
+        batch_size: int = 1,
+        input_base_dir: str = "input",
+    ):
         self.comfy_client = comfy_client
         self.batch_size = batch_size
+        self.input_base_dir = input_base_dir
 
     @classmethod
     @asynccontextmanager
-    async def create(cls, comfy_host: str, batch_size: int = 1, **comfy_client_kwargs):
-        async with create_comfy_client(comfy_host, **comfy_client_kwargs) as comfy_client:
-            yield cls(comfy_client=comfy_client, batch_size=batch_size)
+    async def create(
+        cls,
+        comfy_host: str,
+        batch_size: int = 1,
+        input_base_dir: str = "input",
+        **comfy_client_kwargs,
+    ):
+        async with create_comfy_client(
+            comfy_host, **comfy_client_kwargs
+        ) as comfy_client:
+            yield cls(
+                comfy_client=comfy_client,
+                batch_size=batch_size,
+                input_base_dir=input_base_dir,
+            )
 
     def submit_workflow(
         self,
@@ -250,16 +268,18 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         **kwargs,
     ) -> Generator[WorkflowOutputImage, None, None]:
         loop = asyncio.get_event_loop()
-        yield from list(loop.run_until_complete(
-            self.submit_workflow_async(
-                workflow_template=workflow_template,
-                input_images=input_images,
-                num_samples=num_samples,
-                randomize_seed=randomize_seed,
-                loop=loop,
-                **kwargs,
+        yield from list(
+            loop.run_until_complete(
+                self.submit_workflow_async(
+                    workflow_template=workflow_template,
+                    input_images=input_images,
+                    num_samples=num_samples,
+                    randomize_seed=randomize_seed,
+                    loop=loop,
+                    **kwargs,
+                )
             )
-        ))
+        )
 
     async def submit_workflow_async(
         self,
@@ -286,9 +306,11 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
 
         batch_size = kwargs.setdefault("batch_size", self.batch_size)
+        
+        input_images_dir = Path(self.input_base_dir) / job_id
 
         workflow = workflow_template.render(
-            input_images_dir=f"input/{job_id}",
+            input_images_dir=str(input_images_dir),
             **kwargs,
         )
 
