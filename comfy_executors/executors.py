@@ -229,7 +229,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         return await future
 
-
+     
 class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(self, comfy_client: ComfyUIAPIClient, batch_size: int = 1):
         self.comfy_client = comfy_client
@@ -237,9 +237,9 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
     @classmethod
     @asynccontextmanager
-    async def create(cls, comfy_host: str, **kwargs):
-        async with create_comfy_client(comfy_host) as comfy_client:
-            yield cls(comfy_client=comfy_client, **kwargs)
+    async def create(cls, comfy_host: str, batch_size: int = 1, **comfy_client_kwargs):
+        async with create_comfy_client(comfy_host, **comfy_client_kwargs) as comfy_client:
+            yield cls(comfy_client=comfy_client, batch_size=batch_size)
 
     def submit_workflow(
         self,
@@ -248,9 +248,9 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
-    ) -> list[WorkflowOutputImage]:
+    ) -> Generator[WorkflowOutputImage, None, None]:
         loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
+        yield from list(loop.run_until_complete(
             self.submit_workflow_async(
                 workflow_template=workflow_template,
                 input_images=input_images,
@@ -259,7 +259,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
                 loop=loop,
                 **kwargs,
             )
-        )
+        ))
 
     async def submit_workflow_async(
         self,
@@ -271,8 +271,6 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         **kwargs,
     ) -> AsyncIterator[WorkflowOutputImage]:
         job_id = uuid.uuid4().hex
-
-        asyncio.run
 
         uploads = [
             asyncio.create_task(
