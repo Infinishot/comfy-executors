@@ -429,7 +429,7 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
             f"Uploading {len(input_images)} images for job {job_id} to modal worker..."
         )
 
-        comfy.upload_images.remote(input_images)
+        comfy.upload_images.remote(input_images, subfolder=job_id)
 
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
 
@@ -481,7 +481,7 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
             f"Uploading {len(input_images)} images for job {job_id} to modal worker..."
         )
 
-        await comfy.upload_images.remote.aio(input_images)
+        await comfy.upload_images.remote.aio(input_images, subfolder=job_id)
 
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
 
