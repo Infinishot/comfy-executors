@@ -361,7 +361,9 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
 
 class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
-    def __init__(self, modal_app: str, modal_class_name: str, comfy_root: str, batch_size=1):
+    def __init__(
+        self, modal_app: str, modal_class_name: str, comfy_root: str, batch_size=1
+    ):
         try:
             import modal
         except ImportError as e:
@@ -425,26 +427,27 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         comfy = self.get_comfy_modal_instance()
 
         job_id = uuid.uuid4().hex
-        
+
         input_images_dir = str(Path(self.comfy_root) / "input" / job_id)
         input_images_dict = {
             f"{i:04d}.jpg": image for i, image in enumerate(input_images)
         }
 
-        generators = [
-            comfy.execute_workflow.remote_gen(workflow=workflow, input_images=input_images_dict, inputs_subfolder=job_id)
-            for workflow in self.get_workflows_for_submission(
-                workflow_template=workflow_template,
-                input_images_dir=input_images_dir,
-                num_samples=num_samples,
-                randomize_seed=randomize_seed,
-                **kwargs,
-            )
-        ]
+        workflows = list(self.get_workflows_for_submission(
+            workflow_template=workflow_template,
+            input_images_dir=input_images_dir,
+            num_samples=num_samples,
+            randomize_seed=randomize_seed,
+            **kwargs,
+        ))
+
+        self.logger.info(f"Workflow submitted for job {job_id}...")
 
         self.logger.info(f"Workflow submitted for job {job_id}. Streaming results...")
 
-        for output in chain(*generators):
+        for output in comfy.execute_workflow.remote_gen(
+            workflows=workflows, input_images=input_images_dict, inputs_subfolder=job_id
+        ):
             yield WorkflowOutputImage(
                 image=output["image"],
                 name=output["name"],
@@ -465,32 +468,32 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         comfy = self.get_comfy_modal_instance()
 
         job_id = uuid.uuid4().hex
-        
+
         input_images_dir = str(Path(self.comfy_root) / "input" / job_id)
         input_images_dict = {
             f"{i:04d}.jpg": image for i, image in enumerate(input_images)
         }
 
-        generators = [
-            comfy.execute_workflow.remote_gen.aio(workflow=workflow, input_images=input_images_dict, inputs_subfolder=job_id)
-            for workflow in self.get_workflows_for_submission(
-                workflow_template=workflow_template,
-                input_images_dir=input_images_dir,
-                num_samples=num_samples,
-                randomize_seed=randomize_seed,
-                **kwargs,
-            )
-        ]
+        workflows = list(self.get_workflows_for_submission(
+            workflow_template=workflow_template,
+            input_images_dir=input_images_dir,
+            num_samples=num_samples,
+            randomize_seed=randomize_seed,
+            **kwargs,
+        ))
 
         self.logger.info(f"Workflow submitted for job {job_id}. Streaming results...")
 
-        async with stream.chain(*generators).stream() as streamer:
-            async for output in streamer:
-                yield WorkflowOutputImage(
-                    image=output["image"],
-                    name=output["name"],
-                    subfolder=output["subfolder"],
-                )
+        async for output in comfy.execute_workflow.remote_gen.aio(
+            workflows=workflows,
+            input_images=input_images_dict,
+            inputs_subfolder=job_id,
+        ):
+            yield WorkflowOutputImage(
+                image=output["image"],
+                name=output["name"],
+                subfolder=output["subfolder"],
+            )
 
 
 class DummyWorkflowExecutor(BaseWorkflowExecutor):
