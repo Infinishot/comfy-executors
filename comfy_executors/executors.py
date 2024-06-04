@@ -425,19 +425,14 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         comfy = self.get_comfy_modal_instance()
 
         job_id = uuid.uuid4().hex
-
-        self.logger.info(
-            f"Uploading {len(input_images)} images for job {job_id} to modal worker..."
-        )
-
-        comfy.upload_images.remote(input_images, subfolder=job_id)
-
-        self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
         
         input_images_dir = str(Path(self.comfy_root) / "input" / job_id)
+        input_images_dict = {
+            f"{i:04d}.jpg": image for i, image in enumerate(input_images)
+        }
 
         generators = [
-            comfy.execute_workflow.remote_gen(workflow=workflow)
+            comfy.execute_workflow.remote_gen(workflow=workflow, input_images=input_images_dict, inputs_subfolder=job_id)
             for workflow in self.get_workflows_for_submission(
                 workflow_template=workflow_template,
                 input_images_dir=input_images_dir,
@@ -470,19 +465,14 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         comfy = self.get_comfy_modal_instance()
 
         job_id = uuid.uuid4().hex
-
-        self.logger.info(
-            f"Uploading {len(input_images)} images for job {job_id} to modal worker..."
-        )
-
-        await comfy.upload_images.remote.aio(input_images, subfolder=job_id)
-
-        self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
         
         input_images_dir = str(Path(self.comfy_root) / "input" / job_id)
+        input_images_dict = {
+            f"{i:04d}.jpg": image for i, image in enumerate(input_images)
+        }
 
         generators = [
-            comfy.execute_workflow.remote_gen.aio(workflow=workflow)
+            comfy.execute_workflow.remote_gen.aio(workflow=workflow, input_images=input_images_dict, inputs_subfolder=job_id)
             for workflow in self.get_workflows_for_submission(
                 workflow_template=workflow_template,
                 input_images_dir=input_images_dir,
