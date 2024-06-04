@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from itertools import chain
 import math
 import asyncio
 import random
-from typing import AsyncIterator, Awaitable, Generator
+from typing import AsyncIterable, AsyncIterator, Generator, Iterable
 import uuid
 import abc
 import time
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 from PIL import Image as ImageFactory
 from PIL.Image import Image
 from pathlib import Path
-
+from aiostream import stream
 from threading import Thread
 from comfy_api_client import ComfyUIAPIClient
 from comfy_api_client import create_client as create_comfy_client
@@ -43,7 +44,7 @@ class BaseWorkflowExecutor(abc.ABC):
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
-    ) -> Generator[WorkflowOutputImage, None, None]:
+    ) -> Iterable[WorkflowOutputImage]:
         pass
 
     @abc.abstractmethod
@@ -55,7 +56,7 @@ class BaseWorkflowExecutor(abc.ABC):
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
-    ) -> Awaitable[list[WorkflowOutputImage]]:
+    ) -> AsyncIterable[WorkflowOutputImage]:
         pass
 
 
@@ -145,7 +146,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
-    ) -> Generator[WorkflowOutputImage, None, None]:
+    ) -> Iterable[WorkflowOutputImage]:
         job = self.endpoint.run(
             self._prepare_workflow_payload(
                 workflow_template=workflow_template,
@@ -197,7 +198,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
-    ) -> Awaitable[list[WorkflowOutputImage]]:
+    ) -> AsyncIterable[WorkflowOutputImage]:
         loop = asyncio.get_running_loop()
 
         input_images = deepcopy(input_images)
@@ -266,7 +267,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
-    ) -> Generator[WorkflowOutputImage, None, None]:
+    ) -> Iterable[WorkflowOutputImage]:
         loop = asyncio.get_event_loop()
         yield from list(
             loop.run_until_complete(
@@ -289,7 +290,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
-    ) -> AsyncIterator[WorkflowOutputImage]:
+    ) -> AsyncIterable[WorkflowOutputImage]:
         job_id = uuid.uuid4().hex
 
         uploads = [
@@ -306,7 +307,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
 
         batch_size = kwargs.setdefault("batch_size", self.batch_size)
-        
+
         input_images_dir = Path(self.input_base_dir) / job_id
 
         workflow = workflow_template.render(
@@ -356,6 +357,153 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
                     image=image_item.image,
                     name=image_item.filename,
                     subfolder=None,
+                )
+
+
+class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
+    def __init__(self, modal_app: str, modal_class_name: str, batch_size=1):
+        try:
+            import modal
+        except ImportError as e:
+            raise ImportError(
+                "The ModalWorkflowExecutor requires the 'modal' package to be installed."
+            ) from e
+
+        self.modal = modal
+        self.modal_app = modal_app
+        self.modal_class_name = modal_class_name
+        self.batch_size = batch_size
+
+    def get_comfy_modal_instance(self):
+        Comfy = self.modal.Cls.lookup(self.modal_app, self.modal_class_name)
+
+        if Comfy is None:
+            # TODO: throw custom exception
+            raise ValueError(
+                f"Modal class {self.modal_class_name} not found in app {self.modal_app}"
+            )
+
+        return Comfy()
+
+    def get_workflows_for_submission(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images_dir: str,
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        **kwargs,
+    ):
+        batch_size = kwargs.setdefault("batch_size", self.batch_size)
+
+        workflow = workflow_template.render(
+            input_images_dir=input_images_dir,
+            **kwargs,
+        )
+
+        if num_samples is not None:
+            batch_count = math.ceil(num_samples / batch_size)
+        else:
+            batch_count = kwargs.get("batch_count", 1)
+
+        for _ in range(batch_count):
+            curr_workflow = workflow
+
+            if randomize_seed:
+                curr_workflow = randomize_noise_seeds(curr_workflow)
+
+            yield curr_workflow
+
+    def submit_workflow(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        **kwargs,
+    ) -> Iterable[WorkflowOutputImage]:
+        comfy = self.get_comfy_modal_instance()
+
+        job_id = uuid.uuid4().hex
+
+        self.logger.info(
+            f"Uploading {len(input_images)} images for job {job_id} to modal worker..."
+        )
+
+        comfy.upload_images.remote(input_images)
+
+        self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
+
+        for workflow in self.get_workflows_for_submission(
+            workflow_template=workflow_template,
+            input_images_dir=job_id,
+            num_samples=num_samples,
+            randomize_seed=randomize_seed,
+            **kwargs,
+        ):
+            print(workflow)
+
+        generators = [
+            comfy.execute_workflow.remote_gen(workflow=workflow)
+            for workflow in self.get_workflows_for_submission(
+                workflow_template=workflow_template,
+                input_images_dir=job_id,
+                num_samples=num_samples,
+                randomize_seed=randomize_seed,
+                **kwargs,
+            )
+        ]
+
+        self.logger.info(f"Workflow submitted for job {job_id}. Streaming results...")
+
+        for output in chain(*generators):
+            yield WorkflowOutputImage(
+                image=output["image"],
+                name=output["name"],
+                subfolder=output["subfolder"],
+            )
+
+    async def submit_workflow_async(
+        self,
+        workflow_template: WorkflowTemplate,
+        input_images: list[Image],
+        num_samples: int = 1,
+        randomize_seed: bool = True,
+        ignore_errors: bool = False,
+        **kwargs,
+    ) -> AsyncIterator[WorkflowOutputImage]:
+        self.logger.info("Instantiating Modal worker...")
+
+        comfy = self.get_comfy_modal_instance()
+
+        job_id = uuid.uuid4().hex
+
+        self.logger.info(
+            f"Uploading {len(input_images)} images for job {job_id} to modal worker..."
+        )
+
+        await comfy.upload_images.remote.aio(input_images)
+
+        self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
+
+        generators = [
+            comfy.execute_workflow.remote_gen.aio(workflow=workflow)
+            for workflow in self.get_workflows_for_submission(
+                workflow_template=workflow_template,
+                input_images_dir=job_id,
+                num_samples=num_samples,
+                randomize_seed=randomize_seed,
+                **kwargs,
+            )
+        ]
+
+        self.logger.info(f"Workflow submitted for job {job_id}. Streaming results...")
+
+        async with stream.chain(*generators).stream() as streamer:
+            async for output in streamer:
+                yield WorkflowOutputImage(
+                    image=output["image"],
+                    name=output["name"],
+                    subfolder=output["subfolder"],
                 )
 
 
