@@ -361,7 +361,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
 
 class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
-    def __init__(self, modal_app: str, modal_class_name: str, batch_size=1):
+    def __init__(self, modal_app: str, modal_class_name: str, comfy_dir: str, batch_size=1):
         try:
             import modal
         except ImportError as e:
@@ -372,6 +372,7 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         self.modal = modal
         self.modal_app = modal_app
         self.modal_class_name = modal_class_name
+        self.comfy_dir = comfy_dir
         self.batch_size = batch_size
 
     def get_comfy_modal_instance(self):
@@ -432,21 +433,14 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         comfy.upload_images.remote(input_images, subfolder=job_id)
 
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
-
-        for workflow in self.get_workflows_for_submission(
-            workflow_template=workflow_template,
-            input_images_dir=job_id,
-            num_samples=num_samples,
-            randomize_seed=randomize_seed,
-            **kwargs,
-        ):
-            print(workflow)
+        
+        input_images_dir = str(Path(self.comfy_dir) / job_id)
 
         generators = [
             comfy.execute_workflow.remote_gen(workflow=workflow)
             for workflow in self.get_workflows_for_submission(
                 workflow_template=workflow_template,
-                input_images_dir=job_id,
+                input_images_dir=input_images_dir,
                 num_samples=num_samples,
                 randomize_seed=randomize_seed,
                 **kwargs,
@@ -484,12 +478,14 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         await comfy.upload_images.remote.aio(input_images, subfolder=job_id)
 
         self.logger.info(f"Images uploaded for job {job_id}. Submitting workflow...")
+        
+        input_images_dir = str(Path(self.comfy_dir) / job_id)
 
         generators = [
             comfy.execute_workflow.remote_gen.aio(workflow=workflow)
             for workflow in self.get_workflows_for_submission(
                 workflow_template=workflow_template,
-                input_images_dir=job_id,
+                input_images_dir=input_images_dir,
                 num_samples=num_samples,
                 randomize_seed=randomize_seed,
                 **kwargs,
