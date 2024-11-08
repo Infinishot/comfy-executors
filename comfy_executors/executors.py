@@ -16,8 +16,7 @@ from PIL.Image import Image
 from pathlib import Path
 from aiostream import stream
 from threading import Thread
-from comfy_api_client import ComfyUIAPIClient
-from comfy_api_client import create_client as create_comfy_client
+from comfy_api_client import ComfyAPIClient, create_client as create_comfy_client
 from comfy_api_client.utils import randomize_noise_seeds
 from comfy_executors import utils
 from comfy_executors.mixins import LoggingMixin
@@ -40,7 +39,7 @@ class BaseWorkflowExecutor(abc.ABC):
     def submit_workflow(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
@@ -51,7 +50,7 @@ class BaseWorkflowExecutor(abc.ABC):
     async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
@@ -81,7 +80,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def _prepare_workflow_payload(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int | None = None,
         randomize_seed: bool = True,
         **kwargs,
@@ -90,12 +89,12 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
         # images within the ComfyUI input folder.
         job_id = uuid.uuid4().hex
 
+        input_images = input_images or []
         input_images_dir = self.comfyui_base_dir / "input" / job_id
 
         batch_size = kwargs.get("batch_size", self.batch_size)
 
         template_kwargs = dict(input_images_dir=input_images_dir, batch_size=batch_size)
-
         template_kwargs.update(kwargs)
 
         workflow = workflow_template.render(**template_kwargs)
@@ -141,7 +140,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def submit_workflow(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
@@ -193,7 +192,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
@@ -234,7 +233,7 @@ class RunPodWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def __init__(
         self,
-        comfy_client: ComfyUIAPIClient,
+        comfy_client: ComfyAPIClient,
         batch_size: int = 1,
         input_base_dir: str = "input",
     ):
@@ -263,7 +262,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def submit_workflow(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
@@ -285,13 +284,15 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
         **kwargs,
     ) -> AsyncIterable[WorkflowOutputImage]:
         job_id = uuid.uuid4().hex
+
+        input_images = input_images or []
 
         uploads = [
             asyncio.create_task(
@@ -329,7 +330,7 @@ class ComfyServerWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
                 submit_workflow = randomize_noise_seeds(submit_workflow)
 
             prompts.append(
-                asyncio.create_task(self.comfy_client.enqueue_workflow(submit_workflow))
+                asyncio.create_task(self.comfy_client.submit_workflow(submit_workflow))
             )
 
         self.logger.info(f"Workflow submitted for job {job_id}. Waiting for results...")
@@ -419,7 +420,7 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     def submit_workflow(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
@@ -428,18 +429,21 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         job_id = uuid.uuid4().hex
 
+        input_images = input_images or []
         input_images_dir = str(Path(self.comfy_root) / "input" / job_id)
         input_images_dict = {
             f"{i:04d}.jpg": image for i, image in enumerate(input_images)
         }
 
-        workflows = list(self.get_workflows_for_submission(
-            workflow_template=workflow_template,
-            input_images_dir=input_images_dir,
-            num_samples=num_samples,
-            randomize_seed=randomize_seed,
-            **kwargs,
-        ))
+        workflows = list(
+            self.get_workflows_for_submission(
+                workflow_template=workflow_template,
+                input_images_dir=input_images_dir,
+                num_samples=num_samples,
+                randomize_seed=randomize_seed,
+                **kwargs,
+            )
+        )
 
         self.logger.info(f"Workflow submitted for job {job_id}...")
 
@@ -457,7 +461,7 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
     async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
@@ -469,18 +473,21 @@ class ModalWorkflowExecutor(BaseWorkflowExecutor, LoggingMixin):
 
         job_id = uuid.uuid4().hex
 
+        input_images = input_images or []
         input_images_dir = str(Path(self.comfy_root) / "input" / job_id)
         input_images_dict = {
             f"{i:04d}.jpg": image for i, image in enumerate(input_images)
         }
 
-        workflows = list(self.get_workflows_for_submission(
-            workflow_template=workflow_template,
-            input_images_dir=input_images_dir,
-            num_samples=num_samples,
-            randomize_seed=randomize_seed,
-            **kwargs,
-        ))
+        workflows = list(
+            self.get_workflows_for_submission(
+                workflow_template=workflow_template,
+                input_images_dir=input_images_dir,
+                num_samples=num_samples,
+                randomize_seed=randomize_seed,
+                **kwargs,
+            )
+        )
 
         self.logger.info(f"Workflow submitted for job {job_id}. Streaming results...")
 
@@ -523,7 +530,7 @@ class DummyWorkflowExecutor(BaseWorkflowExecutor):
     def submit_workflow(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         **kwargs,
@@ -538,7 +545,7 @@ class DummyWorkflowExecutor(BaseWorkflowExecutor):
     async def submit_workflow_async(
         self,
         workflow_template: WorkflowTemplate,
-        input_images: list[Image],
+        input_images: list[Image] | None = None,
         num_samples: int = 1,
         randomize_seed: bool = True,
         ignore_errors: bool = False,
