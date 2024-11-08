@@ -64,7 +64,7 @@ To prepare a workflow for use with `comfy-executors`, first append the `.jinja` 
 
 Additional variables can, of course, be introduced as well which then have to be passed to the workflow rendering function.
 
-### Submitting a workflow an execution backend
+### Submitting workflows
 
 `comfy-executors` supports different execution backends, including local or remote ComfyUI servers and execution on serverless GPUs on [RunPod](https://www.runpod.io/) or [Modal](https://modal.com/).
 
